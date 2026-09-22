@@ -7,9 +7,20 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Normalização e validação da URL do Load Balancer / Servidor Alvo
+function normalizeTargetUrl(rawUrl) {
+  if (!rawUrl) return null;
+  let trimmed = rawUrl.trim().replace(/\/+$/, '');
+  if (!trimmed) return null;
+  if (!/^https?:\/\//i.test(trimmed)) {
+    trimmed = `http://${trimmed}`;
+  }
+  return trimmed;
+}
+
 // URL do Load Balancer ou Servidor Alvo configurado no .env
 const RAW_TARGET_URL = process.env.TARGET_URL || process.env.LOAD_BALANCER_URL || '';
-const TARGET_URL = RAW_TARGET_URL ? RAW_TARGET_URL.trim().replace(/\/+$/, '') : null;
+const TARGET_URL = normalizeTargetUrl(RAW_TARGET_URL);
 const IS_PROXY_MODE = Boolean(TARGET_URL);
 
 // Estado interno da instância local
@@ -158,7 +169,17 @@ app.get('/api/info', async (req, res) => {
           statusText: remoteResponse.statusText,
           statusCode: remoteResponse.status,
           targetUrl: TARGET_URL,
-          message: `O Load Balancer ou Instância remota respondeu com HTTP ${remoteResponse.status}`
+          message: `O Load Balancer respondeu com HTTP ${remoteResponse.status} (${remoteResponse.statusText || 'Erro'}). Verifique se as instâncias no AWS Lightsail estão associadas e com status Healthy.`
+        });
+      }
+
+      const contentType = remoteResponse.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        return res.status(502).json({
+          error: true,
+          statusCode: remoteResponse.status,
+          targetUrl: TARGET_URL,
+          message: `O Load Balancer respondeu com formato inválido (esperava JSON, recebeu ${contentType || 'HTML/Texto'}). Verifique se as instâncias backend estão rodando a aplicação na porta correta.`
         });
       }
 
@@ -241,8 +262,15 @@ app.post('/api/toggle-health', async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
-      const data = await remoteResponse.json();
-      return res.json(data);
+      const contentType = remoteResponse.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await remoteResponse.json();
+        return res.status(remoteResponse.status).json(data);
+      }
+      return res.status(remoteResponse.status).json({
+        error: !remoteResponse.ok,
+        message: `Servidor retornou HTTP ${remoteResponse.status}`
+      });
     } catch (err) {
       return res.status(502).json({ error: true, message: `Erro ao repassar failover: ${err.message}` });
     }

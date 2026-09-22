@@ -14,26 +14,33 @@ graph TD
         AlunoN["Aluno N (Frontend Local)<br/>.env: TARGET_URL"]
     end
 
-    Aluno1 & Aluno2 & AlunoN -->|"Requisições HTTP"| LB["⚖️ AWS Lightsail Load Balancer<br/>(ex: lb-aula.xxxx.lightsail.amazonaws.com)"]
+    Aluno1 & Aluno2 & AlunoN -->|"Requisições HTTP"| LB["⚖️ AWS Lightsail Load Balancer<br/>(ex: http://lb-aula.xxxx.lightsail.amazonaws.com)"]
 
     subgraph "☁️ AWS Lightsail (Nuvem)"
-        LB -->|"Balanceamento (Round-Robin)"| NodeA["🔵 Instância A<br/>IP: 172.26.x.x<br/>Health Check: /healthz"]
-        LB -->|"Balanceamento (Round-Robin)"| NodeB["🟢 Instância B<br/>IP: 172.26.y.y<br/>Health Check: /healthz"]
+        LB -->|"Porta 80 (Round-Robin)"| NodeA["🔵 Instância A (Ubuntu-1)<br/>IP: 172.26.x.x<br/>Health Check: / ou /healthz"]
+        LB -->|"Porta 80 (Round-Robin)"| NodeB["🟢 Instância B (Ubuntu-2)<br/>IP: 172.26.y.y<br/>Health Check: / ou /healthz"]
     end
 ```
+
+> ⚠️ **REGRA DE OURO DO LIGHTSAIL LOAD BALANCER:**  
+> O Load Balancer do AWS Lightsail **sempre** envia tráfego para as instâncias na **porta 80 (HTTP)**. Por isso, a aplicação nas instâncias da AWS precisa escutar diretamente na **porta 80**.
 
 ---
 
 ## 👨‍🏫 1. Guia do Professor: Como Configurar o Ambiente na AWS
 
-O professor criará **2 Instâncias** e **1 Load Balancer** no AWS Lightsail.
+O professor criará **2 Instâncias Ubuntu** e **1 Load Balancer** no console do AWS Lightsail.
+
+---
 
 ### Passo 1.1: Criar a Instância A (Instância Matriz)
 1. Acesse o console do [AWS Lightsail](https://lightsail.aws.amazon.com/).
 2. Clique em **Create instance**.
-3. Selecione a plataforma **Linux/Unix** e o blueprint **OS Only ➔ Ubuntu 22.04 LTS** (ou 24.04).
-4. Escolha o plano mais simples ($3.50 ou $5.00/mês) e dê o nome de **`instancia-a`**.
-5. Clique em **Add launch script** (User Data) e cole o script abaixo para inicializar a aplicação automaticamente gravando o arquivo `.env`:
+3. Escolha a região (ex: `Virginia - us-east-1`).
+4. Selecione a plataforma **Linux/Unix** e o blueprint **OS Only ➔ Ubuntu 22.04 LTS** (ou 24.04).
+5. Escolha o plano de menor custo ($3.50 ou $5.00/mês).
+6. Dê o nome de **`Ubuntu-1`** (ou `instancia-a`).
+7. Clique em **Add launch script** (User Data) e cole o script abaixo para instalar tudo automaticamente:
 
 #### 📜 Launch Script (User Data) para a **Instância A**:
 ```bash
@@ -45,88 +52,88 @@ apt-get install -y nodejs git
 # 2. Instalar PM2 globalmente
 npm install -g pm2
 
-# 3. Criar pasta e clonar o repositório
+# 3. Dar permissão para o Node.js usar a porta 80 nativamente
+setcap 'cap_net_bind_service=+ep' $(which node)
+
+# 4. Criar pasta e clonar o repositório
 mkdir -p /opt/loadbalancer-app
 cd /opt/loadbalancer-app
 git clone https://github.com/jonathantecsantos/demostracao-loadbalancer-aws.git .
 
-# 4. Criar o arquivo .env da Instância A
+# 5. Criar o arquivo .env (Porta 80 obrigatória para o Lightsail Load Balancer!)
 cat << 'EOF' > /opt/loadbalancer-app/.env
-PORT=3000
+PORT=80
 INSTANCE_NAME=Instância A - Lightsail
 INSTANCE_COLOR=blue
 EOF
 
-# 5. Instalar dependências e iniciar com PM2
+# 6. Instalar dependências e iniciar com PM2
 npm install
 pm2 start server.js --name "loadbalancer-backend"
 pm2 startup
 pm2 save
 ```
 
+8. Clique em **Create instance**.
+
+> 💡 **Dica (Se criou a máquina sem o Launch Script):**  
+> Basta conectar via SSH na instância clicando no ícone preto `>_` e colar os comandos acima no terminal (adicionando `sudo` nos comandos que exigem privilégios de root).
+
 ---
 
-### Passo 1.2: Criar a Instância B via Snapshot (Demonstração Prática)
+### Passo 1.2: Criar a Instância B (Instância Clone)
 Para demonstrar o conceito de **Snapshots / Imagens de Disco** na nuvem:
 
-1. No console do Lightsail, entre na **`instancia-a`** e vá na aba **Snapshots**.
-2. Clique em **Create snapshot** (dê um nome, ex: `snapshot-instancia-a`).
-3. Após o snapshot ser concluído, clique nos três pontinhos ao lado dele e selecione **Create new instance**.
-4. Dê o nome de **`instancia-b`** e crie a máquina.
+1. No console do Lightsail, clique na **`Ubuntu-1`** e acesse a aba **Snapshots**.
+2. Clique em **Create snapshot** (ex: `snapshot-instancia-a`).
+3. Quando concluir, clique nos três pontinhos ao lado do snapshot e selecione **Create new instance**.
+4. Dê o nome de **`Ubuntu-2`** (ou `instancia-b`) e crie a máquina.
 
 #### 🔧 Ajustando as Variáveis da Instância B via SSH:
-Como a Instância B é um clone exato, ela herdará as configurações da Instância A. Para personalizá-la como **Instância B (Verde)**:
+Como a Instância B é um clone exato, precisamos apenas mudar a cor e o nome:
 
-1. Na lista de instâncias do Lightsail, clique no ícone de terminal **"Connect using SSH"** (ou `_>`) da **`instancia-b`**.
-2. No terminal aberto, execute os seguintes comandos:
+1. Na lista de instâncias do Lightsail, clique no ícone de terminal SSH (**`>_`**) da **`Ubuntu-2`**.
+2. No terminal, execute:
 
 ```bash
 # 1. Acessar a pasta da aplicação
 cd /opt/loadbalancer-app
 
-# 2. Atualizar o arquivo .env para a Instância B
+# 2. Atualizar o .env para a Instância B (Verde)
 cat << 'EOF' > .env
-PORT=3000
+PORT=80
 INSTANCE_NAME=Instância B - Lightsail
 INSTANCE_COLOR=green
 EOF
 
-# 3. Reiniciar o PM2 aplicando as novas variáveis do .env
+# 3. Reiniciar o PM2 aplicando o novo .env
 pm2 restart loadbalancer-backend --update-env
 pm2 save
 ```
-> **Nota:** O IP é detectado automaticamente pelo Node.js em tempo de execução, portanto a Instância B exibirá seu próprio IP da AWS imediatamente!
-
----
-
-### Passo 1.2: Liberar o Firewall das Instâncias
-1. Na aba **Networking** de cada instância criada, vá até a seção **Firewall**.
-2. Clique em **Add rule**:
-   - **Application**: Custom
-   - **Protocol**: TCP
-   - **Port**: `3000` (ou a porta escolhida)
-3. Clique em **Create**.
 
 ---
 
 ### Passo 1.3: Criar e Configurar o Lightsail Load Balancer
 1. No menu superior do Lightsail, clique na aba **Networking** e em **Create load balancer**.
-2. Escolha o nome para o balanceador (ex: `lb-aula-demo`).
-3. Após criado, acesse o Load Balancer:
-   - Na aba **Inbound traffic**, em **Target instances**, anexe a **Instância A** e a **Instância B**.
+2. Escolha o nome do balanceador (ex: `lb-aula-demo`).
+3. Clique em **Create load balancer**.
+4. Acesse o Load Balancer criado:
+   - Na aba **Inbound traffic**, na seção **Target instances**, anexe a **Ubuntu-1** e a **Ubuntu-2**.
    - Na seção **Health check**:
-     - **Health check path**: Altere para `/healthz`
-4. Na parte superior, copie o **DNS name** do Load Balancer (ex: `http://lb-aula-demo.xxxxxx.lightsail.amazonaws.com`).
-5. **Passe essa URL para os alunos!** 📢
+     - O caminho padrão **`/`** já funciona perfeitamente (retorna HTTP 200).
+     - *(Opcional / Recomendado)*: Você pode alterar o **Health check path** para **`/healthz`** (resposta leve em JSON e ideal para testes de failover).
+5. Na parte superior, copie o **DNS name** do Load Balancer (ex: `aa1dcc6e142140bfc447b7bd216f306f-721933512.us-east-1.elb.amazonaws.com`).
+6. **Passe essa URL para os alunos com `http://` no início!** 📢  
+   *Exemplo:* `http://aa1dcc6e142140bfc447b7bd216f306f-721933512.us-east-1.elb.amazonaws.com`
 
 ---
 
 ## 👩‍🎓 2. Guia do Aluno: Como Rodar a Aplicação Localmente
 
-Cada aluno executará a aplicação no seu próprio computador e a apontará diretamente para a nuvem através do arquivo `.env`.
+Cada aluno executará o frontend em seu próprio computador, apontando para o Load Balancer da AWS via `.env`.
 
 ### Passo 2.1: Clonar e Instalar as Dependências
-Abra o terminal no seu computador e execute:
+Abra o terminal e execute:
 ```bash
 # 1. Clonar o repositório
 git clone https://github.com/jonathantecsantos/demostracao-loadbalancer-aws.git
@@ -136,8 +143,8 @@ cd demostracao-loadbalancer-aws
 npm install
 ```
 
-### Passo 2.2: Configurar o arquivo `.env` com o Load Balancer da Aula
-Crie o arquivo `.env` copiando o modelo de exemplo:
+### Passo 2.2: Configurar o arquivo `.env`
+Crie o arquivo `.env` a partir do modelo:
 
 **No Windows (PowerShell):**
 ```powershell
@@ -149,63 +156,75 @@ Copy-Item .env.example .env
 cp .env.example .env
 ```
 
-Abra o arquivo `.env` no seu editor de código (ex: VS Code) e preencha a variável `TARGET_URL` com a URL do Load Balancer fornecida pelo professor:
+Abra o `.env` e configure o `TARGET_URL` com a URL do Load Balancer fornecida pelo professor:
 
 ```env
 PORT=3000
-TARGET_URL=http://lb-aula-demo.xxxxxx.lightsail.amazonaws.com:3000
+TARGET_URL=http://aa1dcc6e142140bfc447b7bd216f306f-721933512.us-east-1.elb.amazonaws.com
 ```
-> *(Obs: Se o Load Balancer estiver na porta padrão 80, não é necessário colocar `:3000` no final).*
 
-### Passo 2.3: Iniciar o Frontend Local
-No terminal, execute:
+> ⚠️ **Atenção:** Sempre inclua o `http://` no início da URL. O Load Balancer escuta na porta 80 padrão, portanto **não** adicione `:3000` no final da URL do balanceador.
+
+### Passo 2.3: Iniciar o Servidor Local
 ```bash
 npm start
 ```
 
-Abra no seu navegador: **[http://localhost:3000](http://localhost:3000)**
+Abra no navegador: **[http://localhost:3000](http://localhost:3000)**
 
 ---
 
 ## 🧪 3. Roteiro Prático da Demonstração em Aula
 
 ### 1️⃣ Testando o Balanceamento de Carga (Round-Robin)
-1. Com a página aberta em `http://localhost:3000`, clique repetidamente no botão **"Fazer Nova Requisição"** ou marque o checkbox **"Auto-Refresh"**.
+1. Com o painel aberto em `http://localhost:3000`, clique repetidamente no botão **"Fazer Nova Requisição"** ou marque o checkbox **"Auto-Refresh"**.
 2. **O que observar**:
-   - As respostas irão alternar entre **Instância A** (Card Azul) e **Instância B** (Card Verde).
-   - O endereço IP interno de cada máquina mudará na tela.
-   - O gráfico de **Distribuição em Tempo Real** mostrará o tráfego sendo dividido em aproximadamente 50% para cada nó.
+   - As respostas vão alternar entre **Instância A** (Card Azul) e **Instância B** (Card Verde).
+   - O endereço IP interno de cada máquina da AWS mudará em tempo real.
+   - O gráfico de **Distribuição em Tempo Real** mostrará o tráfego sendo dividido uniformemente (~50% para cada nó).
 
 ---
 
-### 2️⃣ Testando a Alta Disponibilidade e Tolerância a Falhas (Failover)
-1. O professor acessa o console do AWS Lightsail e clica em **Stop (Parar)** na **Instância A**.
-2. Os alunos continuam clicando ou mantêm o **Auto-Refresh** ligado.
+### 2️⃣ Testando a Tolerância a Falhas e Alta Disponibilidade (Failover)
+1. O professor acessa o console do AWS Lightsail e clica em **Stop (Parar)** na **Ubuntu-1**.
+2. Os alunos continuam clicando ou mantêm o **Auto-Refresh** ativado.
 3. **O que acontece**:
-   - O Load Balancer da AWS percebe que o Health Check (`/healthz`) da Instância A parou de responder.
-   - O Load Balancer automaticamente desvia **100% das novas requisições para a Instância B** (Verde).
-   - Os alunos percebem que o sistema **não sai do ar** e continua respondendo normalmente!
-4. O professor clica em **Start (Iniciar)** na Instância A.
-   - Assim que o Health Check voltar a responder `200 OK`, o Load Balancer reintroduz a Instância A no pool e o tráfego volta a ser balanceado entre Azul e Verde!
+   - O Load Balancer da AWS detecta a indisponibilidade da máquina e para de encaminhar tráfego para ela.
+   - O Load Balancer desvia **100% das novas requisições para a Ubuntu-2 (Verde)**.
+   - Os alunos observam que o sistema **permanece online sem nenhuma interrupção** para os usuários finais!
+4. O professor clica em **Start (Iniciar)** na **Ubuntu-1**.
+   - Assim que o Health Check voltar a responder `200 OK`, a AWS reintroduz a máquina no pool e o balanceamento volta a alternar entre Azul e Verde.
 
 ---
 
-## 📡 4. Tabela de Endpoints Disponíveis
+## 🛠️ 4. Solução de Problemas Comuns (Troubleshooting)
+
+| Sintoma / Erro | Causa Mais Provável | Como Resolver |
+| :--- | :--- | :--- |
+| `Health Check: Failed` no painel do Lightsail | A aplicação não está escutando na porta 80 ou o PM2 não foi iniciado na instância | No terminal SSH da máquina, verifique `pm2 status` e rode `curl -I http://localhost:80/`. Certifique-se de que o `.env` na AWS está com `PORT=80`. |
+| `Failed to parse URL from ...` no terminal do aluno | A variável `TARGET_URL` no `.env` foi informada sem o protocolo (`http://`) | Edite o `.env` local e garanta que começa com `http://` (ex: `TARGET_URL=http://lb-demo...`). |
+| `502 Bad Gateway` retornado pelo Load Balancer | Todas as instâncias anexadas estão indisponíveis ou falharam no Health Check | Verifique se as instâncias no Lightsail estão anexadas e com status **Healthy**. |
+| `Connection refused` ao testar `curl http://localhost:80/` | Node.js sem permissão para porta 80 no Linux | Execute `sudo setcap 'cap_net_bind_service=+ep' $(which node)` e reinicie a aplicação com `pm2 restart all`. |
+
+---
+
+## 📡 5. Tabela de Endpoints
 
 | Endpoint | Método | Descrição |
 | :--- | :--- | :--- |
-| `/` | `GET` | Interface visual do aluno (HTML/CSS/JS) |
-| `/api/config` | `GET` | Retorna o status de conexão e a URL alvo configurada no `.env` |
-| `/api/info` | `GET` | Repassa a chamada para o Load Balancer e traz os dados da instância ativa |
-| `/healthz` | `GET` | Endpoint de monitoramento de saúde para o AWS Lightsail |
+| `/` | `GET` | Interface visual completa do aluno (HTML/CSS/JS) |
+| `/api/config` | `GET` | Retorna o modo de execução (Proxy ou Local) e a URL alvo configurada |
+| `/api/info` | `GET` | Repassa a requisição ao Load Balancer e traz os dados da instância atendente |
+| `/healthz` | `GET` | Endpoint JSON leve de monitoramento de integridade para a AWS |
 
 ---
 
-## ⚙️ 5. Variáveis de Ambiente (`.env`)
+## ⚙️ 6. Variáveis de Ambiente (`.env`)
 
-| Variável | Descrição | Onde Configurar | Exemplo |
+| Variável | Descrição | Onde Configurar | Valor Típico |
 | :--- | :--- | :--- | :--- |
-| `TARGET_URL` | URL/DNS do Load Balancer AWS para onde o frontend local envia requisições | **Máquina do Aluno** | `http://lb-demo.lightsail.amazonaws.com:3000` |
-| `PORT` | Porta do servidor web local | **Aluno & AWS** | `3000` |
-| `INSTANCE_NAME`| Nome de identificação da instância | **Instância AWS** | `Instância A - Lightsail` |
-| `INSTANCE_COLOR`| Cor temática (`blue`, `green`, `purple`, etc.) | **Instância AWS** | `blue` |
+| `PORT` | Porta onde a aplicação escuta | **AWS (Instâncias)** | `80` |
+| `PORT` | Porta do servidor web local | **Aluno (Computador)** | `3000` |
+| `TARGET_URL` | URL HTTP completa do Load Balancer AWS | **Aluno (Computador)** | `http://lb-aula.xxxx.lightsail.amazonaws.com` |
+| `INSTANCE_NAME`| Nome amigável exibido no card | **AWS (Instâncias)** | `Instância A - Lightsail` |
+| `INSTANCE_COLOR`| Cor temática (`blue`, `green`, `purple`, etc.) | **AWS (Instâncias)** | `blue` ou `green` |
