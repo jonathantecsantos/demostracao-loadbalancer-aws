@@ -70,14 +70,22 @@ EOF
 # 6. Instalar dependências e iniciar com PM2
 npm install
 pm2 start server.js --name "loadbalancer-backend"
-pm2 startup
+
+# 7. Configurar inicialização automática no boot do Linux (Essencial para testes de Stop/Start!)
+sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u ubuntu --hp /home/ubuntu
 pm2 save
 ```
 
 8. Clique em **Create instance**.
 
-> 💡 **Dica (Se criou a máquina sem o Launch Script):**  
-> Basta conectar via SSH na instância clicando no ícone preto `>_` e colar os comandos acima no terminal (adicionando `sudo` nos comandos que exigem privilégios de root).
+> 💡 **Dica (Se você configurou a máquina manualmente via SSH):**  
+> Caso configure via terminal SSH (`ubuntu`), certifique-se de rodar:
+> ```bash
+> pm2 startup
+> # Copie e execute o comando "sudo env PATH=..." exibido na tela
+> pm2 save
+> ```
+> Isso garante que, quando você desligar e ligar a máquina em aula para a demonstração de Failover, o Node.js suba sozinho no boot.
 
 ---
 
@@ -90,7 +98,7 @@ Para demonstrar o conceito de **Snapshots / Imagens de Disco** na nuvem:
 4. Dê o nome de **`Ubuntu-2`** (ou `instancia-b`) e crie a máquina.
 
 #### 🔧 Ajustando as Variáveis da Instância B via SSH:
-Como a Instância B é um clone exato, precisamos apenas mudar a cor e o nome:
+Como a Instância B é um clone exato, precisamos apenas mudar a cor, o nome e garantir a inicialização automática:
 
 1. Na lista de instâncias do Lightsail, clique no ícone de terminal SSH (**`>_`**) da **`Ubuntu-2`**.
 2. No terminal, execute:
@@ -106,8 +114,9 @@ INSTANCE_NAME=Instância B - Lightsail
 INSTANCE_COLOR=green
 EOF
 
-# 3. Reiniciar o PM2 aplicando o novo .env
+# 3. Reiniciar o PM2 aplicando o novo .env e salvar o estado de boot
 pm2 restart loadbalancer-backend --update-env
+sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u ubuntu --hp /home/ubuntu
 pm2 save
 ```
 
@@ -186,14 +195,26 @@ Abra no navegador: **[http://localhost:3000](http://localhost:3000)**
 ---
 
 ### 2️⃣ Testando a Tolerância a Falhas e Alta Disponibilidade (Failover)
-1. O professor acessa o console do AWS Lightsail e clica em **Stop (Parar)** na **Ubuntu-1**.
-2. Os alunos continuam clicando ou mantêm o **Auto-Refresh** ativado.
+1. O professor acessa o console do AWS Lightsail e clica em **Stop (Parar)** na **Ubuntu-1** (ou na **Ubuntu-2**).
+2. Os alunos continuam clicando no painel ou mantêm o **Auto-Refresh** ativado.
 3. **O que acontece**:
    - O Load Balancer da AWS detecta a indisponibilidade da máquina e para de encaminhar tráfego para ela.
-   - O Load Balancer desvia **100% das novas requisições para a Ubuntu-2 (Verde)**.
+   - O Load Balancer desvia **100% das novas requisições para a outra instância saudável**.
    - Os alunos observam que o sistema **permanece online sem nenhuma interrupção** para os usuários finais!
-4. O professor clica em **Start (Iniciar)** na **Ubuntu-1**.
-   - Assim que o Health Check voltar a responder `200 OK`, a AWS reintroduz a máquina no pool e o balanceamento volta a alternar entre Azul e Verde.
+4. O professor clica em **Start (Iniciar)** na máquina parada.
+   - **Tempo de recuperação:** A AWS leva cerca de **60 a 90 segundos** para executar checagens de integridade consecutivas bem-sucedidas.
+   - **Recuperação automática:** Assim que o status na AWS voltar para **Healthy**, as requisições voltam a se equilibrar entre Azul e Verde **automaticamente**, sem precisar reiniciar o servidor local dos alunos (`npm start`) nem atualizar a página!
+
+> ⚠️ **Atenção no Teste de Aula (Se a máquina voltar com "Health Check: Failed"):**  
+> Se o serviço do systemd não foi habilitado antes do Stop, o Node.js não iniciará sozinho com o boot do Ubuntu. Para resolver em segundos:
+> 1. Clique no ícone de terminal SSH (**`>_`**) da máquina que foi reiniciada.
+> 2. No terminal, reative o processo e garanta que ele nunca mais esqueça no boot:
+>    ```bash
+>    cd /opt/loadbalancer-app
+>    pm2 start server.js --name "loadbalancer-backend" || pm2 resurrect
+>    sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u ubuntu --hp /home/ubuntu
+>    pm2 save
+>    ```
 
 ---
 
@@ -202,6 +223,7 @@ Abra no navegador: **[http://localhost:3000](http://localhost:3000)**
 | Sintoma / Erro | Causa Mais Provável | Como Resolver |
 | :--- | :--- | :--- |
 | `Health Check: Failed` no painel do Lightsail | A aplicação não está escutando na porta 80 ou o PM2 não foi iniciado na instância | No terminal SSH da máquina, verifique `pm2 status` e rode `curl -I http://localhost:80/`. Certifique-se de que o `.env` na AWS está com `PORT=80`. |
+| `Health Check: Failed` após dar **Stop/Start** na instância | O Node.js/PM2 não foi configurado para subir no boot do Linux | Acesse via SSH e execute: `cd /opt/loadbalancer-app && pm2 start server.js --name "loadbalancer-backend" && pm2 save`. Em seguida, configure o boot com `sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u ubuntu --hp /home/ubuntu && pm2 save`. |
 | `Failed to parse URL from ...` no terminal do aluno | A variável `TARGET_URL` no `.env` foi informada sem o protocolo (`http://`) | Edite o `.env` local e garanta que começa com `http://` (ex: `TARGET_URL=http://lb-demo...`). |
 | `502 Bad Gateway` retornado pelo Load Balancer | Todas as instâncias anexadas estão indisponíveis ou falharam no Health Check | Verifique se as instâncias no Lightsail estão anexadas e com status **Healthy**. |
 | `Connection refused` ao testar `curl http://localhost:80/` | Node.js sem permissão para porta 80 no Linux | Execute `sudo setcap 'cap_net_bind_service=+ep' $(which node)` e reinicie a aplicação com `pm2 restart all`. |
