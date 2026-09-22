@@ -89,36 +89,59 @@ env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u ubu
 
 ---
 
-### Passo 1.2: Criar a Instância B (Instância Clone)
-Para demonstrar o conceito de **Snapshots / Imagens de Disco** na nuvem:
+### Passo 1.2: Criar a Instância B a partir do Snapshot (100% Automático via Launch Script)
+Para demonstrar o conceito de **Snapshots / Imagens de Disco** na nuvem sem precisar abrir o terminal SSH:
 
 1. No console do Lightsail, clique na **`Ubuntu-1`** e acesse a aba **Snapshots**.
 2. Clique em **Create snapshot** (ex: `snapshot-instancia-a`).
-3. Quando concluir, clique nos três pontinhos ao lado do snapshot e selecione **Create new instance**.
-4. Dê o nome de **`Ubuntu-2`** (ou `instancia-b`) e crie a máquina.
+3. Quando o snapshot for concluído, clique nos três pontinhos ao lado dele e selecione **Create new instance**.
+4. Dê o nome de **`Ubuntu-2`** (ou `instancia-b`).
+5. Antes de clicar em criar, clique em **Add launch script** (User Data) e cole o script abaixo:
 
-#### 🔧 Ajustando as Variáveis da Instância B via SSH:
-Como a Instância B é um clone exato, precisamos apenas mudar a cor, o nome e garantir a inicialização automática:
-
-1. Na lista de instâncias do Lightsail, clique no ícone de terminal SSH (**`>_`**) da **`Ubuntu-2`**.
-2. No terminal, execute:
-
+#### 📜 Launch Script (User Data) para a **Instância B** (Clone Verde):
 ```bash
-# 1. Acessar a pasta da aplicação
-cd /opt/loadbalancer-app
+#!/bin/bash
+# 1. Garantir permissões da pasta da aplicação
+chown -R ubuntu:ubuntu /opt/loadbalancer-app
 
-# 2. Atualizar o .env para a Instância B (Verde)
-cat << 'EOF' > .env
+# 2. Atualizar o arquivo .env para a Instância B (Verde na Porta 80)
+cat << 'EOF' > /opt/loadbalancer-app/.env
 PORT=80
 INSTANCE_NAME=Instância B - Lightsail
 INSTANCE_COLOR=green
 EOF
+chown ubuntu:ubuntu /opt/loadbalancer-app/.env
 
-# 3. Reiniciar o PM2 aplicando o novo .env e salvar o estado de boot
-pm2 restart loadbalancer-backend --update-env
-sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u ubuntu --hp /home/ubuntu
-pm2 save
+# 3. Puxar atualizações mais recentes do repositório
+sudo -u ubuntu bash -c "cd /opt/loadbalancer-app && git pull"
+
+# 4. Limpar processos antigos herdados do snapshot
+pm2 delete all 2>/dev/null || true
+sudo -u ubuntu pm2 delete all 2>/dev/null || true
+
+# 5. Iniciar a aplicação lendo o novo .env e salvar no boot
+sudo -u ubuntu bash -c "cd /opt/loadbalancer-app && pm2 start server.js --name 'loadbalancer-backend' --update-env && pm2 save"
+
+# 6. Garantir inicialização automática no boot do sistema operacional
+env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u ubuntu --hp /home/ubuntu
 ```
+
+6. Clique em **Create instance**.
+
+Pronto! A Instância B já subirá **100% configurada**, com o card **Verde**, porta 80 e inicialização no boot garantida, **sem que você precise entrar no SSH dela!** 🎉
+
+> 💡 **Nota alternativa (Se esqueceu de colar o Launch Script ao criar o clone):**  
+> Basta abrir o terminal SSH (`>_`) da `Ubuntu-2` e rodar:
+> ```bash
+> cd /opt/loadbalancer-app
+> cat << 'EOF' > .env
+> PORT=80
+> INSTANCE_NAME=Instância B - Lightsail
+> INSTANCE_COLOR=green
+> EOF
+> pm2 restart loadbalancer-backend --update-env
+> pm2 save
+> ```
 
 ---
 
