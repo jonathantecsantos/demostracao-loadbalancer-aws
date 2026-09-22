@@ -55,25 +55,25 @@ npm install -g pm2
 # 3. Dar permissão para o Node.js usar a porta 80 nativamente
 setcap 'cap_net_bind_service=+ep' $(which node)
 
-# 4. Criar pasta e clonar o repositório
+# 4. Criar pasta e dar permissão total ao usuário ubuntu
 mkdir -p /opt/loadbalancer-app
-cd /opt/loadbalancer-app
-git clone https://github.com/jonathantecsantos/demostracao-loadbalancer-aws.git .
+chown -R ubuntu:ubuntu /opt/loadbalancer-app
 
-# 5. Criar o arquivo .env (Porta 80 obrigatória para o Lightsail Load Balancer!)
+# 5. Clonar repositório e criar o .env
+sudo -u ubuntu git clone https://github.com/jonathantecsantos/demostracao-loadbalancer-aws.git /opt/loadbalancer-app
+
 cat << 'EOF' > /opt/loadbalancer-app/.env
 PORT=80
 INSTANCE_NAME=Instância A - Lightsail
 INSTANCE_COLOR=blue
 EOF
+chown ubuntu:ubuntu /opt/loadbalancer-app/.env
 
-# 6. Instalar dependências e iniciar com PM2
-npm install
-pm2 start server.js --name "loadbalancer-backend"
+# 6. Instalar dependências, iniciar com PM2 e salvar no perfil do usuário ubuntu
+sudo -u ubuntu bash -c "cd /opt/loadbalancer-app && npm install && pm2 start server.js --name 'loadbalancer-backend' && pm2 save"
 
-# 7. Configurar inicialização automática no boot do Linux (Essencial para testes de Stop/Start!)
-sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u ubuntu --hp /home/ubuntu
-pm2 save
+# 7. Configurar inicialização automática no boot para o usuário ubuntu
+env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u ubuntu --hp /home/ubuntu
 ```
 
 8. Clique em **Create instance**.
