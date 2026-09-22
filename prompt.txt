@@ -1,0 +1,21 @@
+Preciso de uma aplicação web simples, desenvolvida em Node.js com Express e um frontend minimalista em HTML/CSS/JS, projetada para uma aula de AWS Lightsail para demonstrar o funcionamento de um Load Balancer e Failover.
+
+A aplicação será hospedada em múltiplas instâncias na nuvem (ex: Instância A e Instância B) atrás de um Load Balancer.
+
+Requisitos da Aplicação:
+1. Backend (Node.js/Express):
+   - Deve detectar e retornar o IP local da interface de rede da instância onde está rodando.
+   - Deve permitir configurar um identificador amigável da instância através de uma variável de ambiente (ex: INSTANCE_NAME="Instância A - US-East"). Se não houver, deve usar o hostname do sistema.
+   - Deve ter a rota principal ('/') que serve uma página web elegante.
+   - Deve ter um endpoint dedicado de Health Check (ex: '/healthz') que retorna status HTTP 200 OK para o Load Balancer testar se a instância está viva.
+
+2. Frontend (HTML/CSS/JS):
+   - Uma interface moderna, limpa e com forte apelo visual (ótima para projeção em sala de aula), contendo:
+     * Um bloco ou "Card" grande destacando o **Nome da Instância** que atendeu a requisição.
+     * O **Endereço IP interno/externo** da instância atual.
+     * Um indicador visual de status (ex: uma bolinha verde brilhante indicando "Online / Healthy").
+     * Um contador de requisições que incrementa a cada clique ou atualização.
+     * Cores de fundo diferentes baseadas no nome da instância (ex: se for a Instância A, o card fica azul; se for a B, fica verde ou roxo), facilitando muito para os alunos baterem o olho e verem a troca de IP/servidor instantaneamente quando o Load Balancer alternar.
+   - Um botão central de "Fazer Nova Requisição" (ou um modo de auto-refresh opcional via checkbox) para facilitar os testes em massa da turma.
+
+Por favor, forneça os arquivos necessários (package.json, server.js e public/index.html) e um guia rápido de como rodar a aplicação definindo a variável de ambiente.

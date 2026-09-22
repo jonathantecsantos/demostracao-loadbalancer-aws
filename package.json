@@ -1,0 +1,25 @@
+{
+  "name": "loadbalancer-demo-app",
+  "version": "1.0.0",
+  "description": "Aplicação pedagógica para demonstração de Load Balancer e Failover no AWS Lightsail",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "aws",
+    "lightsail",
+    "load-balancer",
+    "failover",
+    "health-check",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}

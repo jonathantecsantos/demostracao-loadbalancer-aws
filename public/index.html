@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AWS Lightsail - Load Balancer & Failover Demo</title>
+  <meta name="description" content="Aplicação para visualização em tempo real de balanceamento de carga (Load Balancing) e Failover no AWS Lightsail.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="theme-blue">
+  <div class="background-glow glow-1"></div>
+  <div class="background-glow glow-2"></div>
+
+  <div class="container">
+    <!-- Top Header Navigation -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="cloud-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+          </svg>
+        </div>
+        <div>
+          <h1>AWS Lightsail <span>Load Balancer Demo</span></h1>
+          <p class="subtitle" id="headerSubtitle">Conectando ao ambiente...</p>
+        </div>
+      </div>
+
+      <div class="header-status-badge" id="headerStatusBadge">
+        <span class="live-dot"></span>
+        <span id="targetModeLabel">CARREGANDO</span>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- HERO CARD: Active Server Instance -->
+      <section class="hero-card" id="heroCard">
+        <div class="card-header">
+          <div class="status-indicator-badge" id="statusBadge">
+            <span class="status-dot"></span>
+            <span id="statusText">ONLINE / HEALTHY</span>
+            <span class="status-code" id="statusCode">HTTP 200</span>
+          </div>
+          <div class="latency-badge" id="latencyBadge" title="Tempo de resposta">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            <span id="latencyText">-- ms</span>
+          </div>
+        </div>
+
+        <div class="instance-info">
+          <span class="instance-label">Instância Ativa Respondendo:</span>
+          <h2 class="instance-title" id="instanceName">Carregando Instância...</h2>
+        </div>
+
+        <div class="ip-highlight-box">
+          <div class="ip-info-group">
+            <span class="ip-label">Endereço IP da Interface Local da Instância</span>
+            <div class="ip-value-wrapper">
+              <span class="ip-value" id="instanceIp">0.0.0.0</span>
+              <button class="copy-btn" id="copyIpBtn" title="Copiar IP" aria-label="Copiar IP">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="hostname-group">
+            <span class="hostname-label">Hostname da Instância AWS:</span>
+            <code class="hostname-value" id="instanceHostname">carregando...</code>
+          </div>
+        </div>
+
+        <!-- Quick Stats Grid inside Hero -->
+        <div class="hero-stats-grid">
+          <div class="stat-card">
+            <span class="stat-label">Requisições nesta Instância</span>
+            <span class="stat-value" id="serverReqCount">0</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Cliques do Aluno (Local)</span>
+            <span class="stat-value" id="clientReqCount">0</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Uptime do Servidor AWS</span>
+            <span class="stat-value" id="uptimeText">0s</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Último Atendimento</span>
+            <span class="stat-value" id="lastSeenTime">--:--:--</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Action Controls -->
+      <section class="controls-panel">
+        <div class="controls-left">
+          <button class="btn-primary" id="btnRequest">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3L21.5 8M22 12.5a10 10 0 0 1-18.8 4.2L2.5 16"/>
+            </svg>
+            <span>Fazer Nova Requisição</span>
+          </button>
+
+          <div class="auto-refresh-container">
+            <label class="toggle-switch">
+              <input type="checkbox" id="autoRefreshToggle">
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">Auto-Refresh:</span>
+            <select id="refreshInterval" class="select-interval">
+              <option value="1000">1 segundo (Rápido)</option>
+              <option value="2000" selected>2 segundos</option>
+              <option value="5000">5 segundos</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="controls-right">
+          <button class="btn-secondary" id="btnClearHistory" title="Limpar histórico">
+            Limpar Histórico
+          </button>
+        </div>
+      </section>
+
+      <div class="progress-bar-container" id="progressBarContainer">
+        <div class="progress-bar-fill" id="progressBarFill"></div>
+      </div>
+
+      <!-- Traffic Distribution Feed / Visualizer -->
+      <section class="feed-section">
+        <div class="section-title-row">
+          <h3>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="20" x2="18" y2="10"/>
+              <line x1="12" y1="20" x2="12" y2="4"/>
+              <line x1="6" y1="20" x2="6" y2="14"/>
+            </svg>
+            Distribuição de Tráfego do Load Balancer
+          </h3>
+          <span class="feed-count-badge" id="feedCountBadge">0 requisições capturadas</span>
+        </div>
+
+        <!-- Instance Distribution Ratio Bar -->
+        <div class="distribution-summary" id="distributionSummary">
+          <!-- Dynamic Pills inserted via JS -->
+        </div>
+
+        <!-- History Flow (Horizontal Timeline) -->
+        <div class="history-track-wrapper">
+          <div class="history-track" id="historyTrack">
+            <div class="history-placeholder">Clique em "Fazer Nova Requisição" ou ative o Auto-Refresh para visualizar a alternância de instâncias pelo Load Balancer.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Advanced Technical Diagnostics Panel -->
+      <section class="diagnostics-panel">
+        <details>
+          <summary class="diagnostics-summary">
+            <span>🔬 Diagnóstico Técnico & Detalhes da Infraestrutura AWS</span>
+            <span class="toggle-arrow">▼</span>
+          </summary>
+
+          <div class="diagnostics-content">
+            <div class="details-grid">
+              <div class="detail-card">
+                <h5>Interfaces de Rede da Instância</h5>
+                <ul class="network-list" id="networkList">
+                  <li>Carregando...</li>
+                </ul>
+              </div>
+
+              <div class="detail-card">
+                <h5>Métricas do Sistema Operacional (AWS)</h5>
+                <div class="sys-metrics" id="sysMetrics">
+                  <div><strong>SO / Plataforma:</strong> <span id="sysPlatform">--</span></div>
+                  <div><strong>Arquitetura:</strong> <span id="sysArch">--</span></div>
+                  <div><strong>CPUs:</strong> <span id="sysCpus">--</span></div>
+                  <div><strong>Uso de Memória:</strong> <span id="sysMemory">--</span></div>
+                  <div><strong>Node.js:</strong> <span id="sysNodeVersion">--</span></div>
+                </div>
+              </div>
+
+              <div class="detail-card">
+                <h5>Roteamento do Load Balancer</h5>
+                <div class="sys-metrics" id="clientMetrics">
+                  <div><strong>Seu IP (Cliente):</strong> <span id="clientIp">--</span></div>
+                  <div><strong>X-Forwarded-For:</strong> <span id="forwardedFor">--</span></div>
+                  <div><strong>Protocolo:</strong> <span id="clientProto">--</span></div>
+                  <div><strong>Host / Proxy:</strong> <span id="clientHost">--</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>Demonstração de <strong>AWS Lightsail Load Balancer & Failover</strong>.</p>
+      <div class="footer-links">
+        <span>Alvo configurado no <code>.env</code> (<code>TARGET_URL</code>)</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast">Mensagem</div>
+
+  <script src="app.js"></script>
+</body>
+</html>
